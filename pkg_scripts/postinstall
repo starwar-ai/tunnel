@@ -1,0 +1,29 @@
+#!/bin/bash
+# IntranetTunnel postinstall：清理旧版 LaunchDaemon 安装，并把旧配置迁移到当前用户目录
+set -u
+
+LABEL="com.intranet-tunnel.client"
+OLD_PLIST="/Library/LaunchDaemons/${LABEL}.plist"
+OLD_DIR="/Library/Application Support/intranet-tunnel"
+
+# 1) 停掉并移除旧版系统守护进程（若存在）
+launchctl bootout "system/$LABEL" 2>/dev/null || true
+rm -f "$OLD_PLIST"
+
+# 2) 旧配置迁移到当前控制台用户的 ~/Library/Application Support/intranet-tunnel
+USER_NAME="$(stat -f%Su /dev/console 2>/dev/null || true)"
+if [ -n "${USER_NAME:-}" ] && [ "$USER_NAME" != "root" ] && [ "$USER_NAME" != "loginwindow" ] \
+   && id -u "$USER_NAME" >/dev/null 2>&1 && [ -f "$OLD_DIR/client.json" ]; then
+  USER_HOME="$(dscl . -read "/Users/$USER_NAME" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+  if [ -n "$USER_HOME" ] && [ -d "$USER_HOME" ]; then
+    DEST="$USER_HOME/Library/Application Support/intranet-tunnel"
+    mkdir -p "$DEST"
+    [ -f "$DEST/client.json" ] || cp "$OLD_DIR/client.json" "$DEST/client.json"
+    chown -R "$USER_NAME:staff" "$DEST" 2>/dev/null || true
+  fi
+fi
+
+# 3) 清理旧安装目录
+rm -rf "$OLD_DIR"
+
+exit 0

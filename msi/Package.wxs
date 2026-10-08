@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Package Name="Intranet Tunnel Client"
+           Manufacturer="Intranet Tunnel"
+           Version="1.0.0.0"
+           UpgradeCode="7c9a2e10-4f3b-4d2a-9b6e-1a5c8d0e2f41"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <Media Id="1" Cabinet="client.cab" EmbedCab="yes"/>
+    <MajorUpgrade DowngradeErrorMessage="已安装更新版本，请先卸载后再安装。"/>
+
+    <!-- 可通过 msiexec 命令行传入: SERVER=1.2.3.4:7000 TOKEN=xxx TUNNELS="web:8080:127.0.0.1:80" -->
+    <Property Id="SERVER" Value=""/>
+    <Property Id="TOKEN" Value=""/>
+    <Property Id="TUNNELS" Value=""/>
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="IntranetTunnel"/>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Intranet Tunnel Client" Level="1">
+      <Component Id="AppFiles" Directory="INSTALLFOLDER" Guid="*">
+        <Files Include="app\**"/>
+      </Component>
+      <Component Id="PyRuntime" Directory="INSTALLFOLDER" Guid="*">
+        <Files Include="pyrt\**"/>
+      </Component>
+    </Feature>
+
+    <!-- 安装时生成 client.json -->
+    <SetProperty Id="WriteConfig" Sequence="execute" Before="WriteConfig"
+        Value="&quot;[INSTALLFOLDER]pyrt\python.exe&quot; &quot;[INSTALLFOLDER]app\write_config.py&quot; &quot;[SERVER]&quot; &quot;[TOKEN]&quot; &quot;[TUNNELS]&quot;"/>
+    <CustomAction Id="WriteConfig" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec64"
+                  Execute="deferred" Impersonate="no" Return="check"/>
+
+    <!-- 注册登录自启计划任务并立即启动 -->
+    <SetProperty Id="CreateTask" Sequence="execute" Before="CreateTask"
+        Value="cmd.exe /c &quot;schtasks /create /f /tn IntranetTunnelClient /sc onlogon /rl HIGHEST /tr \&quot;\&quot;[INSTALLFOLDER]pyrt\pythonw.exe\&quot; \&quot;[INSTALLFOLDER]app\run_client.py\&quot;\&quot; &amp;&amp; schtasks /run /tn IntranetTunnelClient&quot;"/>
+    <CustomAction Id="CreateTask" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec64"
+                  Execute="deferred" Impersonate="no" Return="check"/>
+
+    <!-- 卸载时删除计划任务并停止进程 -->
+    <SetProperty Id="RemoveTask" Sequence="execute" Before="RemoveTask"
+        Value="cmd.exe /c &quot;schtasks /end /tn IntranetTunnelClient &amp; schtasks /delete /f /tn IntranetTunnelClient&quot;"/>
+    <CustomAction Id="RemoveTask" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec64"
+                  Execute="deferred" Impersonate="no" Return="ignore"/>
+
+    <InstallExecuteSequence>
+      <Custom Action="WriteConfig" After="InstallFiles"><![CDATA[NOT REMOVE="ALL"]]></Custom>
+      <Custom Action="CreateTask" After="WriteConfig"><![CDATA[NOT REMOVE="ALL"]]></Custom>
+      <Custom Action="RemoveTask" Before="RemoveFiles"><![CDATA[REMOVE="ALL"]]></Custom>
+    </InstallExecuteSequence>
+
+  </Package>
+</Wix>
